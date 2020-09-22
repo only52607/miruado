@@ -48,7 +48,7 @@ dependencies {
     implementation "io.vertx:vertx-auth-jwt:$vertx_version"
     implementation "io.vertx:vertx-lang-kotlin-coroutines:$vertx_version"
 
-    implementation "net.mamoe:com.ooooonly.miruado.mirai-core-qqandroid:$mirai_core_version"
+    implementation "net.mamoe:mirai-core-qqandroid:$mirai_core_version"
     implementation "com.squareup.okhttp3:okhttp:$okhttp3_version"
     implementation 'org.json:json:20160212'
     implementation "org.xerial:sqlite-jdbc:$sqlite_jdbc_version"
