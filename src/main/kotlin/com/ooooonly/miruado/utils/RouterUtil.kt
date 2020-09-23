@@ -1,9 +1,12 @@
 package com.ooooonly.luaMirai.frontend.web.utils
 
+import com.ooooonly.miruado.Config
 import io.vertx.core.Vertx
+import io.vertx.core.http.HttpMethod
 import io.vertx.ext.web.Route
 import io.vertx.ext.web.Router
 import io.vertx.ext.web.RoutingContext
+import io.vertx.ext.web.handler.CorsHandler
 import io.vertx.kotlin.coroutines.dispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -106,6 +109,23 @@ fun Router.handleJson(): Route = route("/*").consumes(MIME_JSON).produces(MIME_J
 //    response().putHeader("Access-Control-Allow-Headers", "Origin, No-Cache, X-Requested-With, If-Modified-Since, Pragma, Last-Modified, Cache-Control, Expires, Content-Type, X-E4M-With, Authorization")
 //    response().putHeader("Access-Control-Expose-Headers", "Authorization")
     next()
+}
+fun Route.handleCors(){
+    handlerApply {
+        response().putHeader(
+            "Access-Control-Allow-Headers",
+            "Origin, No-Cache, X-Requested-With, If-Modified-Since, Pragma, Last-Modified, Cache-Control, Expires, Content-Type, X-E4M-With, Authorization"
+        )
+        response().putHeader("Access-Control-Expose-Headers", Config.JWT.TOKEN_KEY)
+        next()
+    }
+    handler(
+        CorsHandler.create("*")
+            .allowedMethod(HttpMethod.GET)
+            .allowedMethod(HttpMethod.POST)
+            .allowedMethod(HttpMethod.PUT)
+            .allowedMethod(HttpMethod.DELETE)
+    )
 }
 
 fun Vertx.createRouter(): Router = Router.router(this)
