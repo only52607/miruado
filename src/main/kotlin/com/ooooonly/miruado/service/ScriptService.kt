@@ -8,4 +8,5 @@ interface ScriptService {
     suspend fun getAllScriptsInfo():List<ScriptInfo>
     suspend fun getScriptInfo(scriptIndex:Int):ScriptInfo
     suspend fun removeScript(scriptIndex:Int)
+    suspend fun addBot(botId:Long)
 }

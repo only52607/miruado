@@ -1,31 +1,28 @@
 package com.ooooonly.miruado.mirai
 
-import com.ooooonly.miruado.Config
-import io.vertx.core.eventbus.EventBus
-import io.vertx.core.json.JsonObject
+import com.ooooonly.miruado.service.LogPublisher
+import com.ooooonly.vertx.kotlin.rpc.getServiceProxy
+import io.vertx.core.Vertx
 import net.mamoe.mirai.utils.BotConfiguration
 import net.mamoe.mirai.utils.SimpleLogger
 
-class WebBotConfiguration(eventBus: EventBus) : BotConfiguration() {
+class WebBotConfiguration(vertx: Vertx) : BotConfiguration() {
+    private val logPublisher: LogPublisher by lazy {
+        vertx.getServiceProxy<LogPublisher>("service.log")
+    }
     init {
         botLoggerSupplier = {
             SimpleLogger("") { message, e ->
                 println(message)
-                eventBus.publish(
-                    Config.Eventbus.LOG,
-                    JsonObject().put("type", "bot").put("from", it.id).put("message", message).encode()
-                )
+                logPublisher.publishBotLog(it.id,message?:"")
             }
         }
         networkLoggerSupplier = {
             SimpleLogger("") { message, e ->
                 println(message)
-                eventBus.publish(
-                    Config.Eventbus.LOG,
-                    JsonObject().put("type", "net").put("from", it.id).put("message", message).encode()
-                )
+                logPublisher.publishNetLog(it.id,message?:"")
             }
         }
-        loginSolver = WebBotLoginSolver(eventBus)
+        loginSolver = WebBotLoginSolver(vertx)
     }
 }

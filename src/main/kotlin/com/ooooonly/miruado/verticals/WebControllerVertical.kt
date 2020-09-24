@@ -2,11 +2,12 @@ package com.ooooonly.miruado.verticals
 
 import com.ooooonly.luaMirai.frontend.web.utils.*
 import com.ooooonly.miruado.Config
-import com.ooooonly.miruado.mirai.CaptchaReceiver
+import com.ooooonly.miruado.Services
 import com.ooooonly.miruado.service.AuthService
 import com.ooooonly.miruado.service.BotService
 import com.ooooonly.miruado.service.FileService
 import com.ooooonly.miruado.service.ScriptService
+import com.ooooonly.miruado.utils.checkResponseException
 import com.ooooonly.vertx.kotlin.rpc.getServiceProxy
 import io.vertx.core.eventbus.EventBus
 import io.vertx.core.json.JsonArray
@@ -15,38 +16,48 @@ import io.vertx.ext.web.Router
 import io.vertx.ext.web.handler.BodyHandler
 import io.vertx.ext.web.handler.ResponseContentTypeHandler
 import io.vertx.ext.web.handler.StaticHandler
+import io.vertx.kotlin.core.deployVerticleAwait
 import io.vertx.kotlin.core.http.sendFileAwait
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import java.util.*
 
 
 class WebControllerVertical(val port:Int):CoroutineVerticle() {
-    private lateinit var eventBus: EventBus
 
     private val botService:BotService by lazy {
-        vertx.getServiceProxy<BotService>("service.bot")
+        vertx.getServiceProxy<BotService>(Services.BOT)
     }
     private val fileService:FileService by lazy {
-        vertx.getServiceProxy<FileService>("service.file")
+        vertx.getServiceProxy<FileService>(Services.FILE)
     }
     private val scriptService:ScriptService by lazy {
-        vertx.getServiceProxy<ScriptService>("service.script")
+        vertx.getServiceProxy<ScriptService>(Services.SCRIPT)
     }
     private val authService: AuthService by lazy {
-        vertx.getServiceProxy<AuthService>("service.auth")
+        vertx.getServiceProxy<AuthService>(Services.AUTH)
     }
     override suspend fun start() {
-        eventBus = vertx.eventBus()
+        vertx.deployVerticleAwait(BotVertical(Services.BOT,Config.Eventbus.LOGIN_SOLVER))
+        vertx.deployVerticleAwait(FileVertical(Services.FILE,Config.Upload.SCRIPTS))
+        vertx.deployVerticleAwait(LuaScriptVertical(Services.SCRIPT))
+        vertx.deployVerticleAwait(AuthVertical(Services.AUTH))
+        vertx.deployVerticleAwait(LogPublisherVertical(Services.LOG,Config.Eventbus.LOG))
+
         val mainRouter = vertx.createRouter()
         with(mainRouter.route()) {
             handleCors()
             handler(BodyHandler.create().setUploadsDirectory(Config.Upload.SCRIPTS).setDeleteUploadedFilesOnEnd(true))
             handler(StaticHandler.create())
             handler(ResponseContentTypeHandler.create())
-            failureHandler {
+            failureHandler { context ->
                 println("Catch exception:")
-                it.failure().printStackTrace()
-                runCatching {it.responseServerErrorEnd(it.failure().message ?: "")}
+                context.failure().checkResponseException()?.let {
+                    context.response().setStatusCode(it.code).end(it.failMessage)
+                    println(it.failMessage)
+                }?: run {
+                    context.failure().printStackTrace()
+                    context.responseServerErrorEnd(context.failure().message ?: "")
+                }
             }
         }
         mainRouter.route(Config.Eventbus.ROUTE).handler(buildSockJsHandler(vertx) {
@@ -58,7 +69,6 @@ class WebControllerVertical(val port:Int):CoroutineVerticle() {
             authService.authCheck(request().getHeader(Config.JWT.TOKEN_KEY))
             next()
         }
-        mainRouter.route().handler(StaticHandler.create())
         vertx.createSubRouter(mainRouter, Config.Route.API, ::api)
         vertx.createHttpServer().requestHandler(mainRouter).listen(port)
     }
@@ -128,7 +138,7 @@ class WebControllerVertical(val port:Int):CoroutineVerticle() {
     private fun apiFile(router: Router){
         router.apply {
             getCoroutineHandlerApply("/:filename/raw", this@WebControllerVertical) {
-                responseOkEnd(fileService.getFileContentBase64(pathParam("filename")))
+                responseOkEnd(String(fileService.getFileContentBase64(pathParam("filename")).bytes))
             }
             putCoroutineHandlerApply("/:filename/raw", this@WebControllerVertical) {
                 fileService.setFileContentBase64(pathParam("filename"),bodyAsString)
@@ -179,16 +189,16 @@ class WebControllerVertical(val port:Int):CoroutineVerticle() {
     private fun apiLoginSolver(router: Router) {
         router.handleJson()
         router.apply {
-            postHandlerApply {
-                CaptchaReceiver.setResult(bodyAsJson.getString("result"))
+            postCoroutineHandlerApply(this@WebControllerVertical) {
+                botService.finishPicCaptcha(0L,bodyAsJson.getString("result"))
                 responseOkEnd("")
             }
         }
     }
 
-    fun periodicPublishTest() {
-        vertx.setPeriodic(1000) {
-            eventBus.publish("bot", "现在时间是：" + Date()) //发布消息
-        }
-    }
+//    fun periodicPublishTest() {
+//        vertx.setPeriodic(1000) {
+//            eventBus.publish("bot", "现在时间是：" + Date()) //发布消息
+//        }
+//    }
 }

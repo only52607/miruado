@@ -27,6 +27,7 @@ fun RoutingContext.responseOkEnd(data: Any) {
 fun RoutingContext.responseCreatedEnd(message: String) = responseStatusMessageEnd(201, message)
 fun RoutingContext.responseAcceptEnd(message: String) = responseStatusMessageEnd(202, message)
 fun RoutingContext.responseDeletedEnd(message: String) = responseStatusMessageEnd(204, message)
+
 fun RoutingContext.responseInvalidEnd(message: String) = responseStatusErrorEnd(400, message)
 fun RoutingContext.responseUnauthorizedEnd(message: String) = responseStatusErrorEnd(401, message)
 fun RoutingContext.responseForbiddenEnd(message: String) = responseStatusErrorEnd(403, message)

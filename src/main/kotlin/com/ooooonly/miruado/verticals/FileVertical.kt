@@ -9,6 +9,7 @@ import com.ooooonly.miruado.service.ScriptService
 import com.ooooonly.miruado.utils.InvalidResponseException
 import com.ooooonly.miruado.utils.NotFoundResponseException
 import com.ooooonly.vertx.kotlin.rpc.RpcCoroutineVerticle
+import io.vertx.core.buffer.Buffer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -28,9 +29,9 @@ class FileVertical(channel:String, private val fileDictionary: String):RpcCorout
         it.absolutePath
     }
 
-    override suspend fun getFileContentBase64(fileName: String): String = ifFileExist(fileName){
+    override suspend fun getFileContentBase64(fileName: String): Buffer = ifFileExist(fileName){
         withContext(Dispatchers.IO) {
-            Base64.getEncoder().encodeToString(it.readBytes())
+            Buffer.buffer(Base64.getEncoder().encodeToString(it.readBytes()))
         }
     }
 
