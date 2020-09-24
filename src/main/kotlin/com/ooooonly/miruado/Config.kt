@@ -25,17 +25,6 @@ object Config {
 
     object JWT {
         const val TOKEN_KEY = "Authorization"
-        val jwtAuthOptions: JWTAuthOptions by lazy {
-            JWTAuthOptions()
-                .addPubSecKey(
-                    pubSecKeyOptionsOf(
-                        algorithm = "HS256",
-                        publicKey = "oooonly",
-                        secretKey = "ooooonlyok",
-                        symmetric = true
-                    )
-                )
-        }
     }
 
     object Deploy {

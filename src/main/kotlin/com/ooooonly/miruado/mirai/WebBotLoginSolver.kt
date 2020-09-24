@@ -1,19 +1,16 @@
 package com.ooooonly.miruado.mirai
 
-import com.ooooonly.miruado.Config
+import com.ooooonly.miruado.Services
 import com.ooooonly.miruado.service.BotService
 import com.ooooonly.vertx.kotlin.rpc.getServiceProxy
 import io.vertx.core.Vertx
-import io.vertx.core.eventbus.EventBus
-import io.vertx.core.json.JsonObject
 import net.mamoe.mirai.Bot
 import net.mamoe.mirai.utils.LoginSolver
-import java.util.*
 
 class WebBotLoginSolver(val vertx: Vertx) : LoginSolver() {
 
     private val botService: BotService by lazy {
-        vertx.getServiceProxy<BotService>("service.bot")
+        vertx.getServiceProxy<BotService>(Services.BOT)
     }
 
     override suspend fun onSolvePicCaptcha(bot: Bot, data: ByteArray): String? {

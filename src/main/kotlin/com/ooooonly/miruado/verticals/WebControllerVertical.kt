@@ -9,21 +9,21 @@ import com.ooooonly.miruado.service.FileService
 import com.ooooonly.miruado.service.ScriptService
 import com.ooooonly.miruado.utils.checkResponseException
 import com.ooooonly.vertx.kotlin.rpc.getServiceProxy
-import io.vertx.core.eventbus.EventBus
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import io.vertx.ext.web.Router
 import io.vertx.ext.web.handler.BodyHandler
 import io.vertx.ext.web.handler.ResponseContentTypeHandler
 import io.vertx.ext.web.handler.StaticHandler
+import io.vertx.ext.web.handler.sockjs.SockJSBridgeOptions
+import io.vertx.ext.web.handler.sockjs.SockJSHandler
 import io.vertx.kotlin.core.deployVerticleAwait
 import io.vertx.kotlin.core.http.sendFileAwait
 import io.vertx.kotlin.coroutines.CoroutineVerticle
-import java.util.*
+import io.vertx.kotlin.ext.web.handler.sockjs.permittedOptionsOf
 
 
-class WebControllerVertical(val port:Int):CoroutineVerticle() {
-
+class WebControllerVertical(private val port:Int):CoroutineVerticle() {
     private val botService:BotService by lazy {
         vertx.getServiceProxy<BotService>(Services.BOT)
     }
@@ -46,24 +46,28 @@ class WebControllerVertical(val port:Int):CoroutineVerticle() {
         val mainRouter = vertx.createRouter()
         with(mainRouter.route()) {
             handleCors()
-            handler(BodyHandler.create().setUploadsDirectory(Config.Upload.SCRIPTS).setDeleteUploadedFilesOnEnd(true))
             handler(StaticHandler.create())
+            handler(BodyHandler.create().setUploadsDirectory(Config.Upload.SCRIPTS).setDeleteUploadedFilesOnEnd(true))
             handler(ResponseContentTypeHandler.create())
             failureHandler { context ->
                 println("Catch exception:")
                 context.failure().checkResponseException()?.let {
+                    println("Response exception:")
                     context.response().setStatusCode(it.code).end(it.failMessage)
-                    println(it.failMessage)
+                    println("${it.code} ${it.failMessage}")
                 }?: run {
+                    println("Unknown exception:")
                     context.failure().printStackTrace()
                     context.responseServerErrorEnd(context.failure().message ?: "")
                 }
             }
         }
-        mainRouter.route(Config.Eventbus.ROUTE).handler(buildSockJsHandler(vertx) {
-            addOutboundAddressRegex(Config.Eventbus.LOG)
-            addOutboundAddressRegex(Config.Eventbus.LOGIN_SOLVER)
-        })
+
+        val sockJSBridgeOptions = SockJSBridgeOptions()
+        sockJSBridgeOptions.addOutboundPermitted(permittedOptionsOf(Config.Eventbus.LOG))
+        sockJSBridgeOptions.addOutboundPermitted(permittedOptionsOf(Config.Eventbus.LOGIN_SOLVER))
+        mainRouter.route(Config.Eventbus.ROUTE).handler(SockJSHandler.create(vertx).apply { bridge(sockJSBridgeOptions) })
+
         mainRouter.route(Config.Route.API.anySubPath()).coroutineHandlerApply(this) {
             if (request().path() == Config.Route.API.subPath(Config.Route.AUTH)) return@coroutineHandlerApply next()
             authService.authCheck(request().getHeader(Config.JWT.TOKEN_KEY))
@@ -195,10 +199,4 @@ class WebControllerVertical(val port:Int):CoroutineVerticle() {
             }
         }
     }
-
-//    fun periodicPublishTest() {
-//        vertx.setPeriodic(1000) {
-//            eventBus.publish("bot", "现在时间是：" + Date()) //发布消息
-//        }
-//    }
 }

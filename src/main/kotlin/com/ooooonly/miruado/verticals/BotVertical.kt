@@ -30,19 +30,18 @@ class BotVertical(channel:String, private val loginSolverChannel: String):RpcCor
     override suspend fun getBotInfo(botId: Long): BotInfo = BotInfo.fromBot(botId)
 
     override suspend fun createBot(createInfo: BotCreateInfo) {
-        val bot = Bot(createInfo.id, createInfo.password, WebBotConfiguration(vertx))
+        val bot = Bot(createInfo.id, createInfo.password, WebBotConfiguration(vertx,createInfo))
         var exception: Exception? = null
         withContext(Dispatchers.IO) {
             try {
                 bot.login()
                 scriptService.addBot(bot.id)
-                true
             } catch (e: Exception) {
                 e.printStackTrace()
                 exception = e
-                false
             }
-        }.takeIf { it }.run {
+        }
+        exception?.let {
             throw ServerErrorResponseException("创建失败！${exception?.message}")
         }
     }
@@ -70,7 +69,7 @@ class BotVertical(channel:String, private val loginSolverChannel: String):RpcCor
     override suspend fun requireUnsafeDeviceLoginVerify(botId: Long, url: String): String {
         val result = CompletableDeferred<String>()
         captchaResults[botId] = result
-        vertx.eventBus().publish(loginSolverChannel,JsonObject().put("type", "SliderCaptcha").put("url", url).encode())
+        vertx.eventBus().publish(loginSolverChannel,JsonObject().put("type", "UnsafeDeviceLoginVerify").put("url", url).encode())
         return result.await()
     }
 

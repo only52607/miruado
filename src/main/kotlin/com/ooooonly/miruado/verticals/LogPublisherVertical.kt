@@ -1,6 +1,5 @@
 package com.ooooonly.miruado.verticals
 
-import com.ooooonly.miruado.Config
 import com.ooooonly.miruado.service.LogPublisher
 import com.ooooonly.vertx.kotlin.rpc.RpcCoroutineVerticle
 import io.vertx.core.json.JsonObject

@@ -1,12 +1,7 @@
 package com.ooooonly.miruado.verticals
 
-import com.ooooonly.luaMirai.lua.ScriptInfo
-import com.ooooonly.luaMirai.lua.ScriptManager
-import com.ooooonly.miruado.Config
 import com.ooooonly.miruado.entities.FileInfo
 import com.ooooonly.miruado.service.FileService
-import com.ooooonly.miruado.service.ScriptService
-import com.ooooonly.miruado.utils.InvalidResponseException
 import com.ooooonly.miruado.utils.NotFoundResponseException
 import com.ooooonly.vertx.kotlin.rpc.RpcCoroutineVerticle
 import io.vertx.core.buffer.Buffer
@@ -44,7 +39,7 @@ class FileVertical(channel:String, private val fileDictionary: String):RpcCorout
         Unit
     }
 
-    override suspend fun getFileInfo(fileName: String): FileInfo = FileInfo.fromFile(File(Config.Upload.SCRIPTS, fileName))
+    override suspend fun getFileInfo(fileName: String): FileInfo = FileInfo.fromFile(getFile(fileName))
 
     override suspend fun getAllFilesInfo(): List<FileInfo> = FileInfo.fromFiles(File(fileDictionary).listFiles())
 
@@ -54,7 +49,6 @@ class FileVertical(channel:String, private val fileDictionary: String):RpcCorout
     }
 
     override suspend fun createFileFromUploads(fileName: String, uploadFileName: String,force:Boolean): Unit = ifAbsoluteFileExist(uploadFileName){
-        println(uploadFileName)
         val newFile = File(it.parentFile, fileName)
         if (force && newFile.exists()){
             newFile.delete()

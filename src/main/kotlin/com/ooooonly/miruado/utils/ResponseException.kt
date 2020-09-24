@@ -16,9 +16,13 @@ open class ResponseException(var code:Int = 500, var failMessage:String): Except
         get() = "{\"code\":$code,\"message\":\"$failMessage\"}"
 }
 
-fun Throwable.checkResponseException():ResponseException? = JsonObject(message).run {
-    if(!this.containsKey("code") || !this.containsKey("message")) return@run null
-    ResponseException(getInteger("code"),getString("message"))
+fun Throwable.checkResponseException():ResponseException? = try{
+    JsonObject(message).run {
+        if(!this.containsKey("code") || !this.containsKey("message")) return@run null
+        ResponseException(getInteger("code"),getString("message"))
+    }
+}catch (e:Exception){
+    null
 }
 
 class InvalidResponseException(failMessage:String = "资源无效！"):ResponseException(400,failMessage)
