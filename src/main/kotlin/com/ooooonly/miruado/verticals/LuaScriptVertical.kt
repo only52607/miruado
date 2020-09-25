@@ -9,7 +9,6 @@ import com.ooooonly.miruado.utils.InvalidResponseException
 import com.ooooonly.miruado.utils.NotFoundResponseException
 import com.ooooonly.vertx.kotlin.rpc.RpcCoroutineVerticle
 import com.ooooonly.vertx.kotlin.rpc.getServiceProxy
-import net.mamoe.mirai.Bot
 import java.io.File
 
 class LuaScriptVertical(channel:String):RpcCoroutineVerticle(channel), ScriptService {
@@ -48,6 +47,10 @@ class LuaScriptVertical(channel:String):RpcCoroutineVerticle(channel), ScriptSer
     }
 
     override suspend fun addBot(botId: Long) {
-        ScriptManager.loadBot(Bot.getInstanceOrNull(botId)?:throw NotFoundResponseException())
+        try {
+            ScriptManager.loadBotFromId(botId)
+        }catch (e:Exception){
+            throw NotFoundResponseException()
+        }
     }
 }

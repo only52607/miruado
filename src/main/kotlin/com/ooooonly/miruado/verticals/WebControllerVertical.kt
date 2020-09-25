@@ -1,29 +1,29 @@
 package com.ooooonly.miruado.verticals
 
-import com.ooooonly.luaMirai.frontend.web.utils.*
-import com.ooooonly.miruado.Config
-import com.ooooonly.miruado.Services
+import com.ooooonly.miruado.*
 import com.ooooonly.miruado.service.AuthService
 import com.ooooonly.miruado.service.BotService
 import com.ooooonly.miruado.service.FileService
 import com.ooooonly.miruado.service.ScriptService
-import com.ooooonly.miruado.utils.checkResponseException
+import com.ooooonly.miruado.utils.*
 import com.ooooonly.vertx.kotlin.rpc.getServiceProxy
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
-import io.vertx.ext.web.Router
 import io.vertx.ext.web.handler.BodyHandler
 import io.vertx.ext.web.handler.ResponseContentTypeHandler
 import io.vertx.ext.web.handler.StaticHandler
-import io.vertx.ext.web.handler.sockjs.SockJSBridgeOptions
 import io.vertx.ext.web.handler.sockjs.SockJSHandler
 import io.vertx.kotlin.core.deployVerticleAwait
 import io.vertx.kotlin.core.http.sendFileAwait
 import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.ext.web.handler.sockjs.permittedOptionsOf
+import io.vertx.kotlin.ext.web.handler.sockjs.sockJSBridgeOptionsOf
 
-
-class WebControllerVertical(private val port:Int):CoroutineVerticle() {
+class WebControllerVertical(private var port:Int = 80,private var handleStatic:Boolean = true):CoroutineVerticle() {
+    companion object{
+        const val TOKEN_KEY = "Authorization"
+        val uploadPath = DICTIONARY_ROOT + globalConfig.getString("upload")
+    }
     private val botService:BotService by lazy {
         vertx.getServiceProxy<BotService>(Services.BOT)
     }
@@ -37,166 +37,122 @@ class WebControllerVertical(private val port:Int):CoroutineVerticle() {
         vertx.getServiceProxy<AuthService>(Services.AUTH)
     }
     override suspend fun start() {
-        vertx.deployVerticleAwait(BotVertical(Services.BOT,Config.Eventbus.LOGIN_SOLVER))
-        vertx.deployVerticleAwait(FileVertical(Services.FILE,Config.Upload.SCRIPTS))
+        vertx.deployVerticleAwait(BotVertical(Services.BOT,"eventBus.bot.loginSolver"))
+        vertx.deployVerticleAwait(FileVertical(Services.FILE, uploadPath))
         vertx.deployVerticleAwait(LuaScriptVertical(Services.SCRIPT))
         vertx.deployVerticleAwait(AuthVertical(Services.AUTH))
-        vertx.deployVerticleAwait(LogPublisherVertical(Services.LOG,Config.Eventbus.LOG))
+        vertx.deployVerticleAwait(LogPublisherVertical(Services.LOG,"eventBus.bot.log"))
 
         val mainRouter = vertx.createRouter()
-        with(mainRouter.route()) {
-            handleCors()
-            handler(StaticHandler.create())
-            handler(BodyHandler.create().setUploadsDirectory(Config.Upload.SCRIPTS).setDeleteUploadedFilesOnEnd(true))
-            handler(ResponseContentTypeHandler.create())
-            failureHandler { context ->
-                println("Catch exception:")
-                context.failure().checkResponseException()?.let {
-                    println("Response exception:")
-                    context.response().setStatusCode(it.code).end(it.failMessage)
-                    println("${it.code} ${it.failMessage}")
-                }?: run {
-                    println("Unknown exception:")
-                    context.failure().printStackTrace()
-                    context.responseServerErrorEnd(context.failure().message ?: "")
-                }
-            }
-        }
-
-        val sockJSBridgeOptions = SockJSBridgeOptions()
-        sockJSBridgeOptions.addOutboundPermitted(permittedOptionsOf(Config.Eventbus.LOG))
-        sockJSBridgeOptions.addOutboundPermitted(permittedOptionsOf(Config.Eventbus.LOGIN_SOLVER))
-        mainRouter.route(Config.Eventbus.ROUTE).handler(SockJSHandler.create(vertx).apply { bridge(sockJSBridgeOptions) })
-
-        mainRouter.route(Config.Route.API.anySubPath()).coroutineHandlerApply(this) {
-            if (request().path() == Config.Route.API.subPath(Config.Route.AUTH)) return@coroutineHandlerApply next()
-            authService.authCheck(request().getHeader(Config.JWT.TOKEN_KEY))
+        mainRouter.route()
+            .handler(FixCorsHandler(TOKEN_KEY))
+            .handler(BodyHandler.create().setUploadsDirectory(uploadPath).setDeleteUploadedFilesOnEnd(true))
+            .handler(ResponseContentTypeHandler.create())
+            .failureHandler(ResponseException.failureHandler)
+        mainRouter.route(Routes.API + "/*").coroutineHandlerApply(this) {
+            if (request().path() == Routes.API + Routes.AUTH) return@coroutineHandlerApply next()
+            authService.authCheck(request().getHeader(TOKEN_KEY))
+            response().putHeader("Content-Type","application/json")
             next()
         }
-        vertx.createSubRouter(mainRouter, Config.Route.API, ::api)
+        mainRouter.mountSubRouter(Routes.EVENT_BUS,SockJSHandler.create(vertx).bridge(
+            sockJSBridgeOptionsOf(outboundPermitted = listOf(permittedOptionsOf(addressRegex = "eventBus.+")) )
+        ))
+        mainRouter.mountSubRouter(Routes.API,apiRouter)
+        if(handleStatic){
+            mainRouter.route()
+                .handler(StaticHandler.create())
+                .handler(SinglePageStaticHandler.create(javaClass.getResource("/webroot/index.html").path))
+        }
         vertx.createHttpServer().requestHandler(mainRouter).listen(port)
     }
-    private fun api(router:Router) {
-        vertx.createSubRouter(router, Config.Route.AUTH.asSubPath(), ::apiAuth)
-        vertx.createSubRouter(router, Config.Route.BOTS.asSubPath(), ::apiBot)
-        vertx.createSubRouter(router, Config.Route.SCRIPTS.asSubPath(), ::apiScript)
-        vertx.createSubRouter(router, Config.Route.FILES.asSubPath(), ::apiFile)
-        vertx.createSubRouter(router, Config.Route.COMMAND.asSubPath(), ::apiCommand)
-        vertx.createSubRouter(router, Config.Route.LOGIN_SOLVER.asSubPath(), ::apiLoginSolver)
+
+    private val apiRouter get() = vertx.createRouter().apply {
+        mountSubRouter(Routes.AUTH,authRouter)
+        mountSubRouter(Routes.AUTH, authRouter)
+        mountSubRouter(Routes.BOTS, botRouter)
+        mountSubRouter(Routes.SCRIPTS, scriptRouter)
+        mountSubRouter(Routes.FILES, fileRouter)
     }
-    private fun apiAuth(router:Router) {
-        router.handleJson()
-        router.apply {
-            postCoroutineHandlerApply(this@WebControllerVertical) {
-                response().putHeader(Config.JWT.TOKEN_KEY,authService.generateToken(bodyAsJson))
-                responseOkEnd("验证通过！")
-            }
-            getCoroutineHandlerApply(this@WebControllerVertical) {
-                responseOkEnd(authService.getPrincipal(request().getHeader(Config.JWT.TOKEN_KEY)))
-            }
+
+    private val authRouter get() = vertx.createRouter().apply {
+        post().responseSuspendEndWith(this@WebControllerVertical,StatusCode.SUCCESS) {
+            response().putHeader(TOKEN_KEY,authService.generateToken(bodyAsJson))
+        }
+        get().responseSuspendEndWith(this@WebControllerVertical) {
+            authService.getPrincipal(request().getHeader(TOKEN_KEY))
         }
     }
-    private fun apiBot(router:Router) {
-        router.handleJson()
-        router.apply {
-            getCoroutineHandlerApply(ROOT,this@WebControllerVertical) {
-                responseEnd(botService.getAllBotsInfo())
-            }
-            getCoroutineHandlerApply("/:botId",this@WebControllerVertical) {
-                responseEnd(botService.getBotInfo(pathParam("botId").toLong()))
-            }
-            postCoroutineHandlerApply(ROOT, this@WebControllerVertical) {
-                botService.createBot(getBodyAsObject())
-                responseCreatedEnd("创建成功")
-            }
-            deleteCoroutineHandlerApply("/:botId", this@WebControllerVertical) {
-                botService.deleteBot(pathParam("botId").toLong())
-                responseDeletedEnd("删除成功！")
-            }
+
+    private val botRouter get() = vertx.createRouter().apply {
+        get("/").responseSuspendEndWith(this@WebControllerVertical){
+            botService.getAllBotsInfo()
+        }
+        get("/:botId").responseSuspendEndWith(this@WebControllerVertical) {
+            botService.getBotInfo(pathParam("botId").toLong())
+        }
+        post("/").responseSuspendEndWith(this@WebControllerVertical,StatusCode.CREATED) {
+            botService.createBot(getBodyAsObject())
+        }
+        delete("/:botId").responseSuspendEndWith(this@WebControllerVertical,StatusCode.DELETED) {
+            botService.deleteBot(pathParam("botId").toLong())
+        }
+        post("/:botId/captchaResult").responseSuspendEndWith(this@WebControllerVertical,StatusCode.SUCCESS) {
+            botService.finishPicCaptcha(pathParam("botId").toLong(),bodyAsJson.getString("result"))
         }
     }
-    private fun apiScript(router:Router) {
-        router.handleJson()
-        router.apply {
-            postCoroutineHandlerApply(ROOT,this@WebControllerVertical) {
-                scriptService.addScriptFromFile(bodyAsJson.getString("name"))
-                responseCreatedEnd("添加脚本成功！")
-            }
-            getCoroutineHandlerApply("/:index/reload", this@WebControllerVertical) {
-                scriptService.reloadScript(pathParam("index").toInt())
-                responseOkEnd("重载成功")
-            }
-            getCoroutineHandlerApply(ROOT, this@WebControllerVertical) {
-                val scriptInfos = JsonArray()
+
+    private val scriptRouter get() = vertx.createRouter().apply {
+        post("/").responseSuspendEndWith(this@WebControllerVertical,StatusCode.CREATED) {
+            scriptService.addScriptFromFile(bodyAsJson.getString("name"))
+        }
+        get("/:index/reload").responseSuspendEndWith(this@WebControllerVertical,StatusCode.SUCCESS) {
+            scriptService.reloadScript(pathParam("index").toInt())
+        }
+        get("/").responseSuspendEndWith(this@WebControllerVertical) {
+            JsonArray().also { scriptInfos ->
                 scriptService.getAllScriptsInfo().forEach {
                     scriptInfos.add(JsonObject.mapFrom(it))
                 }
-                responseOkEnd(scriptInfos)
-            }
-            deleteCoroutineHandlerApply("/:index", this@WebControllerVertical) {
-                scriptService.removeScript(pathParam("index").toInt())
-                responseDeletedEnd("删除成功！")
             }
         }
-    }
-    private fun apiFile(router: Router){
-        router.apply {
-            getCoroutineHandlerApply("/:filename/raw", this@WebControllerVertical) {
-                responseOkEnd(String(fileService.getFileContentBase64(pathParam("filename")).bytes))
-            }
-            putCoroutineHandlerApply("/:filename/raw", this@WebControllerVertical) {
-                fileService.setFileContentBase64(pathParam("filename"),bodyAsString)
-                responseCreatedEnd("更新成功！")
-            }
-            putCoroutineHandlerApply("/:filename/name", this@WebControllerVertical) {
-                fileService.renameFile(pathParam("filename"),JsonObject(bodyAsString).getString("name"))
-                responseCreatedEnd("更新成功！")
-            }
-            getCoroutineHandlerApply("/:filename/file", this@WebControllerVertical) {
-                response().putHeader("content-Type", "text/plain")
-                response().putHeader("Content-Disposition", "attachment;filename=${pathParam("filename")}")
-                response().sendFileAwait(fileService.checkFileAbsolutePath(pathParam("filename")))
-                response().end()
-            }
-            postCoroutineHandlerApply(ROOT, this@WebControllerVertical) {
-                response().isChunked = true
-                for (f in fileUploads()) {
-                    fileService.createFileFromUploads(f.fileName(),f.uploadedFileName(),true)
-                }
-                responseCreatedEnd("上传脚本成功!")
-            }
-            getCoroutineHandlerApply(ROOT, this@WebControllerVertical) {
-                responseOkEnd(fileService.getAllFilesInfo())
-            }
-            getCoroutineHandlerApply("/:filename", this@WebControllerVertical) {
-                responseOkEnd(fileService.getFileInfo(pathParam("filename")))
-            }
-            deleteCoroutineHandlerApply("/:filename", this@WebControllerVertical) {
-                fileService.deleteFile(pathParam("filename"))
-                responseDeletedEnd("删除脚本成功!")
-            }
-            putCoroutineHandlerApply("/:filename", this@WebControllerVertical) {
-                fileService.createFileFromUploads(pathParam("filename"),fileUploads().first().uploadedFileName(),false)
-                responseCreatedEnd("更新脚本成功!")
-            }
+        delete("/:index").responseSuspendEndWith(this@WebControllerVertical,StatusCode.DELETED) {
+            scriptService.removeScript(pathParam("index").toInt())
         }
     }
-    private fun apiCommand(router: Router) {
-        router.handleJson()
-        router.apply {
-            postHandlerApply {
-                val command = bodyAsJson.getString("command")
-                responseOkEnd("")
+
+    private val fileRouter get() = vertx.createRouter().apply {
+        get("/:filename/raw").responseSuspendEndWith( this@WebControllerVertical) {
+            String(fileService.getFileContentBase64(pathParam("filename")).bytes)
+        }
+        put("/:filename/raw").responseSuspendEndWith( this@WebControllerVertical,StatusCode.CREATED) {
+            fileService.setFileContentBase64(pathParam("filename"),bodyAsString)
+        }
+        put("/:filename/name").responseSuspendEndWith(this@WebControllerVertical,StatusCode.CREATED) {
+            fileService.renameFile(pathParam("filename"),JsonObject(bodyAsString).getString("name"))
+        }
+        get("/:filename/file").coroutineHandlerApply(this@WebControllerVertical) {
+            response().putHeader("content-Type", "text/plain")
+                .putHeader("Content-Disposition", "attachment;filename=${pathParam("filename")}")
+                .sendFileAwait(fileService.checkFileAbsolutePath(pathParam("filename")))
+        }
+        post("/").responseSuspendEndWith( this@WebControllerVertical,StatusCode.CREATED) {
+            response().isChunked = true
+            for (f in fileUploads()) {
+                fileService.createFileFromUploads(f.fileName(),f.uploadedFileName(),true)
             }
         }
-    }
-    private fun apiLoginSolver(router: Router) {
-        router.handleJson()
-        router.apply {
-            postCoroutineHandlerApply(this@WebControllerVertical) {
-                botService.finishPicCaptcha(0L,bodyAsJson.getString("result"))
-                responseOkEnd("")
-            }
+        get("/").responseSuspendEndWith( this@WebControllerVertical) {
+            fileService.getAllFilesInfo()
+        }
+        get("/:filename").responseSuspendEndWith( this@WebControllerVertical) {
+            fileService.getFileInfo(pathParam("filename"))
+        }
+        delete("/:filename").responseSuspendEndWith( this@WebControllerVertical,StatusCode.DELETED) {
+            fileService.deleteFile(pathParam("filename"))
+        }
+        put("/:filename").responseSuspendEndWith( this@WebControllerVertical,StatusCode.SUCCESS) {
+            fileService.createFileFromUploads(pathParam("filename"),fileUploads().first().uploadedFileName(),false)
         }
     }
 }

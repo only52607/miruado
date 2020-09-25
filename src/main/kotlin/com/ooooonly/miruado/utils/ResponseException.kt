@@ -1,15 +1,22 @@
 package com.ooooonly.miruado.utils
 
+import io.vertx.core.Handler
 import io.vertx.core.json.JsonObject
+import io.vertx.ext.web.RoutingContext
 
 open class ResponseException(var code:Int = 500, var failMessage:String): Exception() {
     companion object{
-        val instance by lazy{
-            ResponseException(500,"")
-        }
-        fun forInstance(code:Int = 500, failMessage:String) = instance.apply {
-            this.code = code
-            this.failMessage = failMessage
+        val failureHandler = Handler<RoutingContext> {context ->
+            println("Catch exception:")
+            context.failure().checkResponseException()?.let {
+                println("Response exception:")
+                if (!context.response().ended()) context.response().setStatusCode(it.code).end(it.failMessage)
+                println("${it.code} ${it.failMessage}")
+            }?: run {
+                println("Unknown exception:")
+                context.failure().printStackTrace()
+                if (!context.response().ended()) context.response().setStatusCode(500).end(context.failure().message ?: "")
+            }
         }
     }
     override val message: String?
@@ -21,6 +28,7 @@ fun Throwable.checkResponseException():ResponseException? = try{
         if(!this.containsKey("code") || !this.containsKey("message")) return@run null
         ResponseException(getInteger("code"),getString("message"))
     }
+
 }catch (e:Exception){
     null
 }
