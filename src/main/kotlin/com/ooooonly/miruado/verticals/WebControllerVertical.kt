@@ -19,50 +19,66 @@ import io.vertx.kotlin.coroutines.CoroutineVerticle
 import io.vertx.kotlin.ext.web.handler.sockjs.permittedOptionsOf
 import io.vertx.kotlin.ext.web.handler.sockjs.sockJSBridgeOptionsOf
 
-class WebControllerVertical(private var port:Int = 80,private var handleStatic:Boolean = true):CoroutineVerticle() {
-    companion object{
-        const val TOKEN_KEY = "Authorization"
-        val uploadPath = DICTIONARY_ROOT + globalConfig.getString("upload")
+class WebControllerVertical:CoroutineVerticle() {
+    private var port:Int = 80
+    private var handleStatic:Boolean = true
+    private var useCustomStatic:Boolean = false
+    private var customStaticDictionary = ""
+    private var eventBusPublishAddressRegex = "eventBus.+"
+    private var indexPageFile = "/webroot/index.html"
+    private var tokenKey = "Authorization"
+
+    private suspend fun initConfig(){
+        val config = vertx.getGlobalConfig()
+        port = config.getOrSetDefault("port",port)
+        handleStatic = config.getOrSetDefault("handleStatic",handleStatic)
+        useCustomStatic = config.getOrSetDefault("useCustomStatic",useCustomStatic)
+        customStaticDictionary = config.getOrSetDefault("customStaticDictionary",customStaticDictionary)
+        indexPageFile = config.getOrSetDefault("indexPageFile",indexPageFile)
+        eventBusPublishAddressRegex = config.getOrSetDefault("eventBusPublishAddressRegex",eventBusPublishAddressRegex)
+        tokenKey = config.getOrSetDefault("tokenKey",tokenKey)
     }
-    private val botService:BotService by lazy {
+
+    private val botService by lazy {
         vertx.getServiceProxy<BotService>(Services.BOT)
     }
-    private val fileService:FileService by lazy {
+    private val fileService by lazy {
         vertx.getServiceProxy<FileService>(Services.FILE)
     }
-    private val scriptService:ScriptService by lazy {
+    private val scriptService by lazy {
         vertx.getServiceProxy<ScriptService>(Services.SCRIPT)
     }
-    private val authService: AuthService by lazy {
+    private val authService by lazy {
         vertx.getServiceProxy<AuthService>(Services.AUTH)
     }
     override suspend fun start() {
-        vertx.deployVerticleAwait(BotVertical(Services.BOT,"eventBus.bot.loginSolver"))
-        vertx.deployVerticleAwait(FileVertical(Services.FILE, uploadPath))
+        initConfig()
+        vertx.deployVerticleAwait(BotVertical(Services.BOT))
+        vertx.deployVerticleAwait(FileVertical(Services.FILE))
         vertx.deployVerticleAwait(LuaScriptVertical(Services.SCRIPT))
         vertx.deployVerticleAwait(AuthVertical(Services.AUTH))
-        vertx.deployVerticleAwait(LogPublisherVertical(Services.LOG,"eventBus.bot.log"))
+        vertx.deployVerticleAwait(LogPublisherVertical(Services.LOG))
 
         val mainRouter = vertx.createRouter()
         mainRouter.route()
-            .handler(FixCorsHandler(TOKEN_KEY))
-            .handler(BodyHandler.create().setUploadsDirectory(uploadPath).setDeleteUploadedFilesOnEnd(true))
+            .handler(FixCorsHandler(tokenKey))
+            .handler(BodyHandler.create().setUploadsDirectory(fileService.getUploadPath()).setDeleteUploadedFilesOnEnd(true))
             .handler(ResponseContentTypeHandler.create())
             .failureHandler(ResponseException.failureHandler)
         mainRouter.route(Routes.API + "/*").coroutineHandlerApply(this) {
             if (request().path() == Routes.API + Routes.AUTH) return@coroutineHandlerApply next()
-            authService.authCheck(request().getHeader(TOKEN_KEY))
+            authService.authCheck(request().getHeader(tokenKey))
             response().putHeader("Content-Type","application/json")
             next()
         }
         mainRouter.mountSubRouter(Routes.EVENT_BUS,SockJSHandler.create(vertx).bridge(
-            sockJSBridgeOptionsOf(outboundPermitted = listOf(permittedOptionsOf(addressRegex = "eventBus.+")) )
+            sockJSBridgeOptionsOf(outboundPermitted = listOf(permittedOptionsOf(addressRegex = eventBusPublishAddressRegex)) )
         ))
         mainRouter.mountSubRouter(Routes.API,apiRouter)
         if(handleStatic){
             mainRouter.route()
                 .handler(StaticHandler.create())
-                .handler(SinglePageStaticHandler.create(javaClass.getResource("/webroot/index.html").path))
+                .handler(SinglePageStaticHandler.create(javaClass.getResource(indexPageFile).path))
         }
         vertx.createHttpServer().requestHandler(mainRouter).listen(port)
     }
@@ -77,10 +93,10 @@ class WebControllerVertical(private var port:Int = 80,private var handleStatic:B
 
     private val authRouter get() = vertx.createRouter().apply {
         post().responseSuspendEndWith(this@WebControllerVertical,StatusCode.SUCCESS) {
-            response().putHeader(TOKEN_KEY,authService.generateToken(bodyAsJson))
+            response().putHeader(tokenKey,authService.generateToken(bodyAsJson))
         }
         get().responseSuspendEndWith(this@WebControllerVertical) {
-            authService.getPrincipal(request().getHeader(TOKEN_KEY))
+            authService.getPrincipal(request().getHeader(tokenKey))
         }
     }
 

@@ -13,7 +13,7 @@ import java.io.File
 
 class LuaScriptVertical(channel:String):RpcCoroutineVerticle(channel), ScriptService {
 
-    private val fileService: FileService by lazy {
+    private val fileService by lazy {
         vertx.getServiceProxy<FileService>(Services.FILE)
     }
 

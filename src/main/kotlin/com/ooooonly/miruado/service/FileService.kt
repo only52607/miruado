@@ -13,4 +13,5 @@ interface FileService {
     suspend fun renameFile(fileName:String,newFileName:String)
     suspend fun createFileFromUploads(fileName: String,uploadFileName:String,force:Boolean)
     suspend fun deleteFile(fileName: String)
+    suspend fun getUploadPath():String
 }

@@ -3,7 +3,6 @@ package com.ooooonly.miruado.mirai
 import com.ooooonly.miruado.DICTIONARY_ROOT
 import com.ooooonly.miruado.Services
 import com.ooooonly.miruado.entities.BotCreateInfo
-import com.ooooonly.miruado.globalConfig
 import com.ooooonly.miruado.service.LogPublisher
 import com.ooooonly.vertx.kotlin.rpc.getServiceProxy
 import io.vertx.core.Vertx
@@ -33,6 +32,6 @@ class WebBotConfiguration(vertx: Vertx, private val createInfo: BotCreateInfo) :
             }
         }
         loginSolver = WebBotLoginSolver(vertx)
-        fileBasedDeviceInfo(DICTIONARY_ROOT + globalConfig.getString("device"))
+        fileBasedDeviceInfo(DICTIONARY_ROOT + createInfo.device)
     }
 }

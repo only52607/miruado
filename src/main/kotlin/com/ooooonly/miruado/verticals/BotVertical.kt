@@ -3,6 +3,8 @@ package com.ooooonly.miruado.verticals
 import com.ooooonly.miruado.Services
 import com.ooooonly.miruado.entities.BotCreateInfo
 import com.ooooonly.miruado.entities.BotInfo
+import com.ooooonly.miruado.getGlobalConfig
+import com.ooooonly.miruado.getOrSetDefault
 import com.ooooonly.miruado.mirai.WebBotConfiguration
 import com.ooooonly.miruado.service.BotService
 import com.ooooonly.miruado.service.ScriptService
@@ -17,13 +19,23 @@ import kotlinx.coroutines.withContext
 import net.mamoe.mirai.Bot
 import java.util.*
 
-class BotVertical(channel:String, private val loginSolverChannel: String):RpcCoroutineVerticle(channel), BotService {
+class BotVertical(channel:String):RpcCoroutineVerticle(channel), BotService {
 
-    private val scriptService: ScriptService by lazy {
+    private val scriptService by lazy {
         vertx.getServiceProxy<ScriptService>(Services.SCRIPT)
     }
 
     private val captchaResults = mutableMapOf<Long, CompletableDeferred<String>>()
+
+    private var loginSolverChannel: String = "eventBus.bot.loginSolver"
+
+    override suspend fun start() {
+        super.start()
+        val rootConfig = vertx.getGlobalConfig()
+        val botConfig = rootConfig.getOrSetDefault("bot",JsonObject())
+        loginSolverChannel = botConfig.getOrSetDefault("loginSolverChannel",loginSolverChannel)
+        rootConfig.put("bot",botConfig)
+    }
 
     override suspend fun getAllBotsInfo(): List<BotInfo> = BotInfo.fromBots().filter { it.isOnline }
 
@@ -42,7 +54,7 @@ class BotVertical(channel:String, private val loginSolverChannel: String):RpcCor
             }
         }
         exception?.let {
-            throw ServerErrorResponseException("创建失败！${exception?.message}")
+            throw ServerErrorResponseException("创建失败！${it.message}")
         }
     }
 

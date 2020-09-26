@@ -40,7 +40,6 @@ repositories {
 
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8"
-
     implementation "io.vertx:vertx-core:$vertx_version"
     implementation "io.vertx:vertx-web:$vertx_version"
     implementation "io.vertx:vertx-lang-kotlin:$vertx_version"
@@ -49,7 +48,7 @@ dependencies {
     implementation "io.vertx:vertx-lang-kotlin-coroutines:$vertx_version"
     implementation "io.vertx:vertx-service-proxy:$vertx_version"
     compileOnly    "io.vertx:vertx-codegen:$vertx_version"
-
+    implementation "io.vertx:vertx-config:$vertx_version"
     implementation "net.mamoe:mirai-core-qqandroid:$mirai_core_version"
     implementation "com.squareup.okhttp3:okhttp:$okhttp3_version"
     implementation 'org.json:json:20160212'

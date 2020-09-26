@@ -9,7 +9,7 @@ class MainWebServer {
         Vertx.vertx()
     }
     suspend fun start(){
-        vertx.deployVerticleAwait(WebControllerVertical(globalConfig.getInteger("port"),true))
+        vertx.deployVerticleAwait(WebControllerVertical())
     }
     fun stop(){
         vertx.close()

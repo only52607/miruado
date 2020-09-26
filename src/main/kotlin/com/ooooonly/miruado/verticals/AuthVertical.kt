@@ -1,6 +1,7 @@
 package com.ooooonly.miruado.verticals
 
-import com.ooooonly.miruado.globalConfig
+import com.ooooonly.miruado.getGlobalConfig
+import com.ooooonly.miruado.getOrSetDefault
 import com.ooooonly.miruado.service.AuthService
 import com.ooooonly.miruado.utils.UnauthorizedResponseException
 import com.ooooonly.vertx.kotlin.rpc.RpcCoroutineVerticle
@@ -14,14 +15,43 @@ import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
 
 class AuthVertical(channel:String):RpcCoroutineVerticle(channel), AuthService {
+
+    companion object{
+        const val JWT_STRING = "jwt"
+    }
+
+    private var algorithm: String = "HS256"
+    private var publicKey: String = "oooonly"
+    private var secretKey: String = "ooooonlyok"
+    private var symmetric: Boolean = true
+    private var username:String = "admin"
+    private var password:String = "admin"
+
+    override suspend fun start() {
+        super.start()
+        val rootConfig = vertx.getGlobalConfig()
+        val authConfig = rootConfig.getOrSetDefault("auth",JsonObject())
+        username = authConfig.getOrSetDefault("username",username)
+        password = authConfig.getOrSetDefault("password",password)
+
+        val secKeyConfig = authConfig.getOrSetDefault("secKey",JsonObject())
+        algorithm = secKeyConfig.getOrSetDefault("algorithm",algorithm)
+        publicKey = secKeyConfig.getOrSetDefault("publicKey",publicKey)
+        secretKey = secKeyConfig.getOrSetDefault("secretKey",secretKey)
+        symmetric = secKeyConfig.getOrSetDefault("symmetric",symmetric)
+
+        authConfig.put("secKey",secKeyConfig)
+        rootConfig.put("auth",authConfig)
+    }
+
     private val jwtAuthOptions: JWTAuthOptions by lazy {
         JWTAuthOptions()
             .addPubSecKey(
                 pubSecKeyOptionsOf(
-                    algorithm = "HS256",
-                    publicKey = "oooonly",
-                    secretKey = "ooooonlyok",
-                    symmetric = true
+                    algorithm = algorithm,
+                    publicKey = publicKey,
+                    secretKey = secretKey,
+                    symmetric = symmetric
                 )
             )
     }
@@ -31,26 +61,21 @@ class AuthVertical(channel:String):RpcCoroutineVerticle(channel), AuthService {
     }
 
     override suspend fun authCheck(token: String):Unit = suspendCoroutine { con ->
-        authProvider.authenticate(JsonObject().put("jwt", token)) {
+        authProvider.authenticate(JsonObject().put(JWT_STRING, token)) {
             if(!it.succeeded()) con.resumeWithException(UnauthorizedResponseException())
             else con.resume(Unit)
         }
     }
 
     override suspend fun getPrincipal(token: String): JsonObject = suspendCoroutine { con ->
-        authProvider.authenticate(JsonObject().put("jwt", token)) {
+        authProvider.authenticate(JsonObject().put(JWT_STRING, token)) {
             if(!it.succeeded()) con.resumeWithException(UnauthorizedResponseException())
             else con.resume(it.result().principal())
         }
     }
 
     override suspend fun generateToken(authData: JsonObject): String {
-        val username = authData.getString("username")
-        val password = authData.getString("password")
-        val configAuth = globalConfig.getJsonObject("auth")
-        val configUsername = configAuth.getString("account")
-        val configPassword = configAuth.getString("password")
-        if (configUsername != username || configPassword != password) throw UnauthorizedResponseException()
+        if (this.username != authData.getString("username") || this.password != authData.getString("password")) throw UnauthorizedResponseException()
         return authProvider.generateToken(JsonObject().put("auth", true), JWTOptions())
     }
 }
