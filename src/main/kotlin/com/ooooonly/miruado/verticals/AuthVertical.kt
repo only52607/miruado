@@ -1,10 +1,12 @@
 package com.ooooonly.miruado.verticals
 
-import com.ooooonly.miruado.getGlobalConfig
-import com.ooooonly.miruado.getOrSetDefault
+import com.ooooonly.miruado.Services
 import com.ooooonly.miruado.service.AuthService
+import com.ooooonly.miruado.service.JsonConfigProvider
 import com.ooooonly.miruado.utils.UnauthorizedResponseException
+import com.ooooonly.miruado.utils.mapToConfigObject
 import com.ooooonly.vertx.kotlin.rpc.RpcCoroutineVerticle
+import com.ooooonly.vertx.kotlin.rpc.getServiceProxy
 import io.vertx.core.json.JsonObject
 import io.vertx.ext.auth.JWTOptions
 import io.vertx.ext.auth.jwt.JWTAuth
@@ -15,49 +17,38 @@ import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
 
 class AuthVertical(channel:String):RpcCoroutineVerticle(channel), AuthService {
-
     companion object{
+        data class Config(
+            val algorithm: String = "HS256",
+            val publicKey: String = "oooonly",
+            val secretKey: String = "ooooonlyok",
+            val symmetric: Boolean = true,
+            val username: String = "admin",
+            val password: String = "admin"
+        )
         const val JWT_STRING = "jwt"
     }
 
-    private var algorithm: String = "HS256"
-    private var publicKey: String = "oooonly"
-    private var secretKey: String = "ooooonlyok"
-    private var symmetric: Boolean = true
-    private var username:String = "admin"
-    private var password:String = "admin"
+    private val configService by lazy { vertx.getServiceProxy<JsonConfigProvider>(Services.CONFIG) }
+    private lateinit var verticalConfig: Config
 
     override suspend fun start() {
         super.start()
-        val rootConfig = vertx.getGlobalConfig()
-        val authConfig = rootConfig.getOrSetDefault("auth",JsonObject())
-        username = authConfig.getOrSetDefault("username",username)
-        password = authConfig.getOrSetDefault("password",password)
-
-        val secKeyConfig = authConfig.getOrSetDefault("secKey",JsonObject())
-        algorithm = secKeyConfig.getOrSetDefault("algorithm",algorithm)
-        publicKey = secKeyConfig.getOrSetDefault("publicKey",publicKey)
-        secretKey = secKeyConfig.getOrSetDefault("secretKey",secretKey)
-        symmetric = secKeyConfig.getOrSetDefault("symmetric",symmetric)
-
-        authConfig.put("secKey",secKeyConfig)
-        rootConfig.put("auth",authConfig)
-    }
-
-    private val jwtAuthOptions: JWTAuthOptions by lazy {
-        JWTAuthOptions()
-            .addPubSecKey(
-                pubSecKeyOptionsOf(
-                    algorithm = algorithm,
-                    publicKey = publicKey,
-                    secretKey = secretKey,
-                    symmetric = symmetric
-                )
-            )
+        verticalConfig = configService.getConfig("auth").mapToConfigObject()
+        configService.setConfig("auth",JsonObject.mapFrom(verticalConfig))
     }
 
     private val authProvider: JWTAuth by lazy{
-        JWTAuth.create(vertx, jwtAuthOptions)
+        JWTAuth.create(vertx, JWTAuthOptions()
+            .addPubSecKey(
+                pubSecKeyOptionsOf(
+                    algorithm = verticalConfig.algorithm,
+                    publicKey = verticalConfig.publicKey,
+                    secretKey = verticalConfig.secretKey,
+                    symmetric = verticalConfig.symmetric
+                )
+            )
+        )
     }
 
     override suspend fun authCheck(token: String):Unit = suspendCoroutine { con ->
@@ -75,7 +66,7 @@ class AuthVertical(channel:String):RpcCoroutineVerticle(channel), AuthService {
     }
 
     override suspend fun generateToken(authData: JsonObject): String {
-        if (this.username != authData.getString("username") || this.password != authData.getString("password")) throw UnauthorizedResponseException()
+        if (verticalConfig.username != authData.getString("username") || verticalConfig.password != authData.getString("password")) throw UnauthorizedResponseException()
         return authProvider.generateToken(JsonObject().put("auth", true), JWTOptions())
     }
 }

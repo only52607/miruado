@@ -1,12 +1,13 @@
 package com.ooooonly.miruado.verticals
 
-import com.ooooonly.miruado.DICTIONARY_ROOT
+import com.ooooonly.miruado.Services
 import com.ooooonly.miruado.entities.FileInfo
-import com.ooooonly.miruado.getGlobalConfig
-import com.ooooonly.miruado.getOrSetDefault
 import com.ooooonly.miruado.service.FileService
+import com.ooooonly.miruado.service.JsonConfigProvider
 import com.ooooonly.miruado.utils.NotFoundResponseException
+import com.ooooonly.miruado.utils.mapToConfigObject
 import com.ooooonly.vertx.kotlin.rpc.RpcCoroutineVerticle
+import com.ooooonly.vertx.kotlin.rpc.getServiceProxy
 import io.vertx.core.buffer.Buffer
 import io.vertx.core.json.JsonObject
 import kotlinx.coroutines.Dispatchers
@@ -16,19 +17,25 @@ import java.io.FileOutputStream
 import java.util.*
 
 class FileVertical(channel:String):RpcCoroutineVerticle(channel), FileService {
+    companion object{
+        data class Config(
+            val uploadPath:String = "/scripts"
+        )
+    }
 
-    private var uploadPath = "$DICTIONARY_ROOT/scripts"
+    private val configService by lazy { vertx.getServiceProxy<JsonConfigProvider>(Services.CONFIG) }
+    private lateinit var verticalConfig: Config
+
+    private lateinit var absoluteUploadPath:String
 
     override suspend fun start() {
         super.start()
-        val rootConfig = vertx.getGlobalConfig()
-        val fileConfig = rootConfig.getOrSetDefault("file", JsonObject())
-        uploadPath = DICTIONARY_ROOT + fileConfig.getOrSetDefault("uploadPath","/scripts")
-        rootConfig.put("file",fileConfig)
+        verticalConfig = configService.getConfig("file").mapToConfigObject()
+        configService.setConfig("file",JsonObject.mapFrom(verticalConfig))
+        absoluteUploadPath = configService.getAbsoluteConfigDictionary() + verticalConfig.uploadPath
     }
 
-
-    private fun getFile(fileName:String):File = File(uploadPath, fileName)
+    private fun getFile(fileName:String):File = File(absoluteUploadPath, fileName)
     private suspend fun <T> ifFileExist(fileName:String, block:suspend (File)-> T ):T =
         getFile(fileName).takeIf { it.exists() }?.let { block(it) } ?: throw NotFoundResponseException()
     private suspend fun <T> ifAbsoluteFileExist(fileName:String, block:suspend (File)-> T ):T =
@@ -46,37 +53,41 @@ class FileVertical(channel:String):RpcCoroutineVerticle(channel), FileService {
         }
     }
 
-    override suspend fun setFileContentBase64(fileName: String, base64Content: String): Unit = getFile(fileName).let{
-        withContext(Dispatchers.IO) {
-            FileOutputStream(it).apply {
-                write(Base64.getDecoder().decode(base64Content))
-            }.close()
+    override suspend fun setFileContentBase64(fileName: String, base64Content: String){
+        getFile(fileName).let{
+            withContext(Dispatchers.IO) {
+                FileOutputStream(it).apply {
+                    write(Base64.getDecoder().decode(base64Content))
+                }.close()
+            }
         }
-        Unit
     }
 
     override suspend fun getFileInfo(fileName: String): FileInfo = FileInfo.fromFile(getFile(fileName))
 
-    override suspend fun getAllFilesInfo(): List<FileInfo> = FileInfo.fromFiles(File(uploadPath).listFiles()!!)
+    override suspend fun getAllFilesInfo(): List<FileInfo> = FileInfo.fromFiles(File(absoluteUploadPath).listFiles()!!)
 
-    override suspend fun renameFile(fileName: String, newFileName: String): Unit = ifFileExist(fileName){
-        it.renameTo(File(it.parentFile, newFileName))
-        Unit
-    }
-
-    override suspend fun createFileFromUploads(fileName: String, uploadFileName: String,force:Boolean): Unit = ifAbsoluteFileExist(uploadFileName){
-        val newFile = File(it.parentFile, fileName)
-        if (force && newFile.exists()){
-            newFile.delete()
+    override suspend fun renameFile(fileName: String, newFileName: String) {
+        ifFileExist(fileName){
+            it.renameTo(File(it.parentFile, newFileName))
         }
-        it.renameTo(newFile)
-        Unit
     }
 
-    override suspend fun deleteFile(fileName: String): Unit = ifFileExist(fileName){
-        it.delete()
-        Unit
+    override suspend fun createFileFromUploads(fileName: String, uploadFileName: String,force:Boolean){
+        ifAbsoluteFileExist(uploadFileName){
+            val newFile = File(it.parentFile, fileName)
+            if (force && newFile.exists()){
+                newFile.delete()
+            }
+            it.renameTo(newFile)
+        }
     }
 
-    override suspend fun getUploadPath(): String = uploadPath
+    override suspend fun deleteFile(fileName: String) {
+        ifFileExist(fileName){
+            it.delete()
+        }
+    }
+
+    override suspend fun getUploadPath(): String = absoluteUploadPath
 }

@@ -1,4 +1,4 @@
-package com.ooooonly.miruado.utils
+package com.ooooonly.miruado.handler
 
 import io.vertx.core.Handler
 import io.vertx.core.http.HttpMethod

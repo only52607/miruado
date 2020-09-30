@@ -1,12 +1,7 @@
 package com.ooooonly.miruado.utils
 
 import com.fasterxml.jackson.annotation.JsonValue
-
-fun a(){
-    val statusCode:StatusCode = StatusCode.ACCEPT
-    statusCode.statusCode
-}
-
+@Suppress("unused")
 enum class StatusCode(val statusCode: Int, @get:JsonValue val statusMessage: String) {
     SUCCESS(200, "成功"),
     CREATED(201, "成功"),

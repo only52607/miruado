@@ -9,9 +9,7 @@ import net.mamoe.mirai.utils.LoginSolver
 
 class WebBotLoginSolver(val vertx: Vertx) : LoginSolver() {
 
-    private val botService: BotService by lazy {
-        vertx.getServiceProxy<BotService>(Services.BOT)
-    }
+    private val botService by lazy { vertx.getServiceProxy<BotService>(Services.BOT) }
 
     override suspend fun onSolvePicCaptcha(bot: Bot, data: ByteArray): String? {
         return botService.requirePicCaptcha(bot.id,data)

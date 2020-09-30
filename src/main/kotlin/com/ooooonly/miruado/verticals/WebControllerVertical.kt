@@ -1,10 +1,9 @@
 package com.ooooonly.miruado.verticals
 
-import com.ooooonly.miruado.*
-import com.ooooonly.miruado.service.AuthService
-import com.ooooonly.miruado.service.BotService
-import com.ooooonly.miruado.service.FileService
-import com.ooooonly.miruado.service.ScriptService
+import com.ooooonly.miruado.Services
+import com.ooooonly.miruado.handler.FixCorsHandler
+import com.ooooonly.miruado.handler.SinglePageStaticHandler
+import com.ooooonly.miruado.service.*
 import com.ooooonly.miruado.utils.*
 import com.ooooonly.vertx.kotlin.rpc.getServiceProxy
 import io.vertx.core.json.JsonArray
@@ -20,83 +19,72 @@ import io.vertx.kotlin.ext.web.handler.sockjs.permittedOptionsOf
 import io.vertx.kotlin.ext.web.handler.sockjs.sockJSBridgeOptionsOf
 
 class WebControllerVertical:CoroutineVerticle() {
-    private var port:Int = 80
-    private var handleStatic:Boolean = true
-    private var useCustomStatic:Boolean = false
-    private var customStaticDictionary = ""
-    private var eventBusPublishAddressRegex = "eventBus.+"
-    private var indexPageFile = "/webroot/index.html"
-    private var tokenKey = "Authorization"
-
-    private suspend fun initConfig(){
-        val config = vertx.getGlobalConfig()
-        port = config.getOrSetDefault("port",port)
-        handleStatic = config.getOrSetDefault("handleStatic",handleStatic)
-        useCustomStatic = config.getOrSetDefault("useCustomStatic",useCustomStatic)
-        customStaticDictionary = config.getOrSetDefault("customStaticDictionary",customStaticDictionary)
-        indexPageFile = config.getOrSetDefault("indexPageFile",indexPageFile)
-        eventBusPublishAddressRegex = config.getOrSetDefault("eventBusPublishAddressRegex",eventBusPublishAddressRegex)
-        tokenKey = config.getOrSetDefault("tokenKey",tokenKey)
+    companion object{
+        data class Config(
+            val port: Int = 80,
+            val handleStatic: Boolean = true,
+            val useCustomStatic: Boolean = false,
+            val customStaticDictionary: String = "",
+            val eventBusPublishAddressRegex: String = "sockJs.+",
+            val indexPageFile: String = "/webroot/index.html",
+            val tokenKey: String = "Authorization"
+        )
     }
 
-    private val botService by lazy {
-        vertx.getServiceProxy<BotService>(Services.BOT)
-    }
-    private val fileService by lazy {
-        vertx.getServiceProxy<FileService>(Services.FILE)
-    }
-    private val scriptService by lazy {
-        vertx.getServiceProxy<ScriptService>(Services.SCRIPT)
-    }
-    private val authService by lazy {
-        vertx.getServiceProxy<AuthService>(Services.AUTH)
-    }
+    private val botService by lazy { vertx.getServiceProxy<BotService>(Services.BOT) }
+    private val fileService by lazy { vertx.getServiceProxy<FileService>(Services.FILE) }
+    private val scriptService by lazy { vertx.getServiceProxy<ScriptService>(Services.SCRIPT) }
+    private val authService by lazy { vertx.getServiceProxy<AuthService>(Services.AUTH) }
+    private val configService by lazy { vertx.getServiceProxy<JsonConfigProvider>(Services.CONFIG) }
+
+    private lateinit var verticalConfig:Config
+
     override suspend fun start() {
-        initConfig()
+        vertx.deployVerticleAwait(JsonConfigVertical(Services.CONFIG))
         vertx.deployVerticleAwait(BotVertical(Services.BOT))
         vertx.deployVerticleAwait(FileVertical(Services.FILE))
         vertx.deployVerticleAwait(LuaScriptVertical(Services.SCRIPT))
         vertx.deployVerticleAwait(AuthVertical(Services.AUTH))
         vertx.deployVerticleAwait(LogPublisherVertical(Services.LOG))
 
+        verticalConfig = configService.getConfig("web").mapToConfigObject()
+        configService.setConfig("web",JsonObject.mapFrom(verticalConfig))
+
         val mainRouter = vertx.createRouter()
         mainRouter.route()
-            .handler(FixCorsHandler(tokenKey))
+            .handler(FixCorsHandler(verticalConfig.tokenKey))
             .handler(BodyHandler.create().setUploadsDirectory(fileService.getUploadPath()).setDeleteUploadedFilesOnEnd(true))
             .handler(ResponseContentTypeHandler.create())
             .failureHandler(ResponseException.failureHandler)
-        mainRouter.route(Routes.API + "/*").coroutineHandlerApply(this) {
-            if (request().path() == Routes.API + Routes.AUTH) return@coroutineHandlerApply next()
-            authService.authCheck(request().getHeader(tokenKey))
-            response().putHeader("Content-Type","application/json")
-            next()
-        }
-        mainRouter.mountSubRouter(Routes.EVENT_BUS,SockJSHandler.create(vertx).bridge(
-            sockJSBridgeOptionsOf(outboundPermitted = listOf(permittedOptionsOf(addressRegex = eventBusPublishAddressRegex)) )
+        mainRouter.mountSubRouter("/eb",SockJSHandler.create(vertx).bridge(
+            sockJSBridgeOptionsOf(outboundPermitted = listOf(permittedOptionsOf(addressRegex = verticalConfig.eventBusPublishAddressRegex)) )
         ))
-        mainRouter.mountSubRouter(Routes.API,apiRouter)
-        if(handleStatic){
+        mainRouter.mountSubRouter("/api/v1",apiRouter)
+        if(verticalConfig.handleStatic){
             mainRouter.route()
                 .handler(StaticHandler.create())
-                .handler(SinglePageStaticHandler.create(javaClass.getResource(indexPageFile).path))
+                .handler(SinglePageStaticHandler.create(javaClass.getResource(verticalConfig.indexPageFile).path))
         }
-        vertx.createHttpServer().requestHandler(mainRouter).listen(port)
+        vertx.createHttpServer().requestHandler(mainRouter).listen(verticalConfig.port)
     }
 
     private val apiRouter get() = vertx.createRouter().apply {
-        mountSubRouter(Routes.AUTH,authRouter)
-        mountSubRouter(Routes.AUTH, authRouter)
-        mountSubRouter(Routes.BOTS, botRouter)
-        mountSubRouter(Routes.SCRIPTS, scriptRouter)
-        mountSubRouter(Routes.FILES, fileRouter)
+        route().handlerPreApply { response.putHeader("Content-Type","application/json") }
+        mountSubRouter("/auth",authRouter)
+        route().coroutineHandlerPreApply(this@WebControllerVertical){
+            authService.authCheck(request.getHeader(verticalConfig.tokenKey))
+        }
+        mountSubRouter("/bots", botRouter)
+        mountSubRouter("/scripts", scriptRouter)
+        mountSubRouter("/files", fileRouter)
     }
 
     private val authRouter get() = vertx.createRouter().apply {
         post().responseSuspendEndWith(this@WebControllerVertical,StatusCode.SUCCESS) {
-            response().putHeader(tokenKey,authService.generateToken(bodyAsJson))
+            response.putHeader(verticalConfig.tokenKey,authService.generateToken(bodyAsJson))
         }
         get().responseSuspendEndWith(this@WebControllerVertical) {
-            authService.getPrincipal(request().getHeader(tokenKey))
+            authService.getPrincipal(request.getHeader(verticalConfig.tokenKey))
         }
     }
 
@@ -148,7 +136,7 @@ class WebControllerVertical:CoroutineVerticle() {
             fileService.renameFile(pathParam("filename"),JsonObject(bodyAsString).getString("name"))
         }
         get("/:filename/file").coroutineHandlerApply(this@WebControllerVertical) {
-            response().putHeader("content-Type", "text/plain")
+            response.putHeader("content-Type", "text/plain")
                 .putHeader("Content-Disposition", "attachment;filename=${pathParam("filename")}")
                 .sendFileAwait(fileService.checkFileAbsolutePath(pathParam("filename")))
         }

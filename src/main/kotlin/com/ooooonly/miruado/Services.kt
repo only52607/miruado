@@ -6,4 +6,5 @@ object Services {
     const val FILE = "service.file"
     const val LOG = "service.log"
     const val BOT = "service.bot"
+    const val CONFIG = "service.config"
 }

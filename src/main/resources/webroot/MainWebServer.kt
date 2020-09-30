@@ -1,4 +1,4 @@
-package com.ooooonly.miruado
+package webroot
 
 import com.ooooonly.miruado.verticals.WebControllerVertical
 import io.vertx.core.Vertx
