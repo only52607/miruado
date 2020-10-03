@@ -9,6 +9,7 @@ private val vertx: Vertx by lazy{
 }
 
 suspend fun main(){
-    println("starting server")
+    println("Service is Being deployed...")
     vertx.deployVerticleAwait(WebControllerVertical())
+    println("Service was successfully deployed!")
 }
