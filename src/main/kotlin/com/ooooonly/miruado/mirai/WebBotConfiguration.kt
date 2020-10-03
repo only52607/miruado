@@ -1,7 +1,7 @@
 package com.ooooonly.miruado.mirai
 
 import com.ooooonly.miruado.Services
-import com.ooooonly.miruado.entities.BotCreateInfo
+import com.ooooonly.miruado.entity.BotCreateInfo
 import com.ooooonly.miruado.service.JsonConfigProvider
 import com.ooooonly.miruado.service.LogPublisher
 import com.ooooonly.vertx.kotlin.rpc.getServiceProxy

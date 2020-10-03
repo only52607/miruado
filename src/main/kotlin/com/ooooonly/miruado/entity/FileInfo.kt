@@ -1,4 +1,4 @@
-package com.ooooonly.miruado.entities
+package com.ooooonly.miruado.entity
 
 import java.io.File
 

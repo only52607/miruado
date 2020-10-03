@@ -1,9 +1,37 @@
-package com.ooooonly.miruado.verticals
+package com.ooooonly.miruado.vertical
 
 import com.ooooonly.miruado.service.JsonConfigProvider
+import com.ooooonly.miruado.utils.getServiceProxy
+import com.ooooonly.miruado.utils.mapToConfigObject
 import com.ooooonly.vertx.kotlin.rpc.RpcCoroutineVerticle
+import io.vertx.core.Verticle
 import io.vertx.core.json.JsonObject
 import java.io.File
+import kotlin.properties.ReadOnlyProperty
+import kotlin.reflect.KClass
+import kotlin.reflect.KProperty
+
+
+@Suppress("unused")
+inline fun <reified T : Any> Verticle.provideConfig(serviceAddress:String) = object : ReadOnlyProperty<Any?, ConfigProvider<T>> {
+    override fun getValue(thisRef: Any?, property: KProperty<*>): ConfigProvider<T> = ConfigProvider(serviceAddress,thisRef as Verticle,T::class)
+}
+
+class ConfigProvider<T : Any>(
+    channel: String,
+    private val verticle: Verticle,
+    private val configKClass:KClass<T>
+){
+    private val configService by lazy { verticle.getServiceProxy<JsonConfigProvider>(channel) }
+    internal var config: T? = null
+
+    suspend fun get():T{
+        config?.let { return it }
+        config = configService.getConfig(verticle::class.simpleName?:"").mapToConfigObject(configKClass)
+        configService.setConfig(verticle::class.simpleName?:"", JsonObject.mapFrom(config))
+        return config!!
+    }
+}
 
 class JsonConfigVertical(channel:String):RpcCoroutineVerticle(channel), JsonConfigProvider {
     companion object{

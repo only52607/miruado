@@ -1,4 +1,4 @@
-package com.ooooonly.miruado.entities
+package com.ooooonly.miruado.entity
 
 import net.mamoe.mirai.utils.secondsToMillis
 

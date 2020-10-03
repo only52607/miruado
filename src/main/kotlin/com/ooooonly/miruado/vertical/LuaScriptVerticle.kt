@@ -1,4 +1,4 @@
-package com.ooooonly.miruado.verticals
+package com.ooooonly.miruado.vertical
 
 import com.ooooonly.luaMirai.lua.ScriptInfo
 import com.ooooonly.luaMirai.lua.ScriptManager
@@ -7,15 +7,13 @@ import com.ooooonly.miruado.service.FileService
 import com.ooooonly.miruado.service.ScriptService
 import com.ooooonly.miruado.utils.InvalidResponseException
 import com.ooooonly.miruado.utils.NotFoundResponseException
+import com.ooooonly.miruado.utils.provideService
 import com.ooooonly.vertx.kotlin.rpc.RpcCoroutineVerticle
-import com.ooooonly.vertx.kotlin.rpc.getServiceProxy
 import java.io.File
 
-class LuaScriptVertical(channel:String):RpcCoroutineVerticle(channel), ScriptService {
+class LuaScriptVerticle(channel:String):RpcCoroutineVerticle(channel), ScriptService {
 
-    private val fileService by lazy {
-        vertx.getServiceProxy<FileService>(Services.FILE)
-    }
+    private val fileService by provideService<FileService>(Services.FILE)
 
     private suspend fun <T> ifScriptIndexExist(scriptIndex:Int, block:suspend (Int)->T):T{
         if (scriptIndex >= ScriptManager.listScript().size || scriptIndex < 0) throw NotFoundResponseException()

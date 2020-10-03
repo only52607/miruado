@@ -1,5 +1,7 @@
 package com.ooooonly.miruado.utils
 
+import com.ooooonly.vertx.kotlin.rpc.getServiceProxy
+import io.vertx.core.Verticle
 import io.vertx.core.Vertx
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject

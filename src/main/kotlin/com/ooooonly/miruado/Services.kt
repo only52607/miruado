@@ -7,4 +7,5 @@ object Services {
     const val LOG = "service.log"
     const val BOT = "service.bot"
     const val CONFIG = "service.config"
+    const val BOT_EVENT = "service.bot.event"
 }

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import kotlin.properties.ReadWriteProperty
+import kotlin.reflect.KClass
 import kotlin.reflect.KProperty
 
 @Suppress("UNCHECKED_CAST","unused")
@@ -63,3 +64,5 @@ class DefaultConfigObjectMapper : ObjectMapper() {
 inline fun <reified T> JsonObject.mapToObject(objectMapper: ObjectMapper): T = objectMapper.readValue(this.encode(),T::class.java)
 @Suppress("unused")
 inline fun <reified T> JsonObject.mapToConfigObject(): T = DefaultConfigObjectMapper().readValue(this.encode(),T::class.java)
+@Suppress("unused")
+inline fun <T : Any> JsonObject.mapToConfigObject(kclazz: KClass<T>): T = DefaultConfigObjectMapper().readValue(this.encode(),kclazz.java)

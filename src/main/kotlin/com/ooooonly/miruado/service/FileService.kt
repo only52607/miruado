@@ -1,6 +1,6 @@
 package com.ooooonly.miruado.service
 
-import com.ooooonly.miruado.entities.FileInfo
+import com.ooooonly.miruado.entity.FileInfo
 import io.vertx.core.buffer.Buffer
 
 interface FileService {

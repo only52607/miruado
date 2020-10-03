@@ -1,38 +1,31 @@
-package com.ooooonly.miruado.verticals
+package com.ooooonly.miruado.vertical
 
 import com.ooooonly.miruado.Services
-import com.ooooonly.miruado.entities.FileInfo
+import com.ooooonly.miruado.entity.FileInfo
 import com.ooooonly.miruado.service.FileService
 import com.ooooonly.miruado.service.JsonConfigProvider
 import com.ooooonly.miruado.utils.NotFoundResponseException
-import com.ooooonly.miruado.utils.mapToConfigObject
+import com.ooooonly.miruado.utils.provideService
 import com.ooooonly.vertx.kotlin.rpc.RpcCoroutineVerticle
-import com.ooooonly.vertx.kotlin.rpc.getServiceProxy
 import io.vertx.core.buffer.Buffer
-import io.vertx.core.json.JsonObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.util.*
 
-class FileVertical(channel:String):RpcCoroutineVerticle(channel), FileService {
+class FileVerticle(channel:String):RpcCoroutineVerticle(channel), FileService {
     companion object{
         data class Config(
             val uploadPath:String = "/scripts"
         )
     }
-
-    private val configService by lazy { vertx.getServiceProxy<JsonConfigProvider>(Services.CONFIG) }
-    private lateinit var verticalConfig: Config
-
+    private val configService by provideService<JsonConfigProvider>(Services.CONFIG)
+    private val configProvider by provideConfig<Config>(Services.CONFIG)
     private lateinit var absoluteUploadPath:String
-
     override suspend fun start() {
         super.start()
-        verticalConfig = configService.getConfig("file").mapToConfigObject()
-        configService.setConfig("file",JsonObject.mapFrom(verticalConfig))
-        absoluteUploadPath = configService.getAbsoluteConfigDictionary() + verticalConfig.uploadPath
+        absoluteUploadPath = configService.getAbsoluteConfigDictionary() + configProvider.get().uploadPath
     }
 
     private fun getFile(fileName:String):File = File(absoluteUploadPath, fileName)
