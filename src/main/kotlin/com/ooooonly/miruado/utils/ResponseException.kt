@@ -3,18 +3,22 @@ package com.ooooonly.miruado.utils
 import io.vertx.core.Handler
 import io.vertx.core.json.JsonObject
 import io.vertx.ext.web.RoutingContext
+import org.apache.logging.log4j.LogManager
+
 @Suppress("unused")
 open class ResponseException(var code:Int = 500, var failMessage:String): Exception() {
     companion object{
-        val failureHandler = Handler<RoutingContext> {context ->
-            println("Catch exception:")
+        val failureHandler = Handler<RoutingContext> { context ->
+            val logger = LogManager.getLogger()
+            logger.error("Catch exception:")
             context.failure().checkResponseException()?.let {
-                println("Response exception:")
+                logger.error("Response exception:")
                 if (!context.response().ended()) context.response().setStatusCode(it.code).end(it.failMessage)
-                println("${it.code} ${it.failMessage}")
+                logger.error("${it.code} ${it.failMessage}")
             }?: run {
-                println("Unknown exception:")
-                context.failure().printStackTrace()
+                logger.error("Unknown exception:")
+                logger.error(context.failure())
+//                context.failure().printStackTrace()
                 if (!context.response().ended()) context.response().setStatusCode(500).end(context.failure().message ?: "")
             }
         }

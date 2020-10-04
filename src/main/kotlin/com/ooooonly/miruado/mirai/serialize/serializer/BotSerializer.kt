@@ -7,10 +7,11 @@ import net.mamoe.mirai.Bot
 
 class BotSerializer: JsonSerializer<Bot>() {
     override fun serialize(value: Bot?, gen: JsonGenerator?, serializers: SerializerProvider?) {
+        gen?.writeStartObject()
         gen?.writeNumberField("id",value?.id?:0)
         gen?.writeStringField("nick",value?.nick)
         gen?.writeStringField("avatarUrl",value?.selfQQ?.avatarUrl)
         gen?.writeBooleanField("isOnline",value?.isOnline?:false)
-        gen?.writeNumber(value?.id?:0)
+        gen?.writeEndObject()
     }
 }

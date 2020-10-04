@@ -2,7 +2,6 @@ package com.ooooonly.miruado.vertical
 
 import com.ooooonly.miruado.Services
 import com.ooooonly.miruado.handler.FixCorsHandler
-import com.ooooonly.miruado.handler.SinglePageStaticHandler
 import com.ooooonly.miruado.router.v1.V1ApiRouter
 import com.ooooonly.miruado.service.*
 import com.ooooonly.miruado.utils.*
@@ -22,8 +21,7 @@ class WebControllerVerticle:CoroutineVerticle() {
             val handleStatic: Boolean = true,
             val useCustomStatic: Boolean = false,
             val customStaticDictionary: String = "",
-            val eventBusPublishAddressRegex: String = "sockJs.+",
-            val indexPageFile: String = "/webroot/index.html"
+            val eventBusPublishAddressRegex: String = "sockJs\\..+"
         )
     }
 
@@ -31,14 +29,7 @@ class WebControllerVerticle:CoroutineVerticle() {
     private val configProvider by provideConfig<Config>(Services.CONFIG)
 
     override suspend fun start() {
-        vertx.deployVerticleAwait(JsonConfigVertical(Services.CONFIG))
-        vertx.deployVerticleAwait(MiraiVerticle(Services.BOT))
-        vertx.deployVerticleAwait(FileVerticle(Services.FILE))
-        vertx.deployVerticleAwait(LuaScriptVerticle(Services.SCRIPT))
-        vertx.deployVerticleAwait(AuthVerticle(Services.AUTH))
-        vertx.deployVerticleAwait(LogPublisherVerticle(Services.LOG))
-        vertx.deployVerticleAwait(BotEventPublisherVerticle(Services.BOT_EVENT))
-
+        deployVerticles()
         val mainRouter = vertx.createRouter()
         mainRouter.route()
             .handler(FixCorsHandler(AuthService.TOKEN_KEY))
@@ -50,10 +41,22 @@ class WebControllerVerticle:CoroutineVerticle() {
         ))
         mainRouter.mountSubRouter("/api/v1",V1ApiRouter(vertx,this))
         if(configProvider.get().handleStatic){
+            val staticHandler =
+                if (configProvider.get().useCustomStatic) StaticHandler.create(configProvider.get().customStaticDictionary)
+                else StaticHandler.create()
             mainRouter.route()
-                .handler(StaticHandler.create())
-                .handler(SinglePageStaticHandler.create(javaClass.getResource(configProvider.get().indexPageFile).path))
+                .handler(staticHandler).handlerApply { reroute("/") }
         }
         vertx.createHttpServer().requestHandler(mainRouter).listen(configProvider.get().port)
+    }
+
+    private suspend fun deployVerticles(){
+        vertx.deployVerticleAwait(JsonConfigVertical(Services.CONFIG))
+        vertx.deployVerticleAwait(MiraiVerticle(Services.BOT))
+        vertx.deployVerticleAwait(FileVerticle(Services.FILE))
+        vertx.deployVerticleAwait(LuaScriptVerticle(Services.SCRIPT))
+        vertx.deployVerticleAwait(AuthVerticle(Services.AUTH))
+        vertx.deployVerticleAwait(LogPublisherVerticle(Services.LOG))
+        vertx.deployVerticleAwait(BotEventPublisherVerticle(Services.BOT_EVENT))
     }
 }

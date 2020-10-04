@@ -10,23 +10,25 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import net.mamoe.mirai.utils.BotConfiguration
 import net.mamoe.mirai.utils.SimpleLogger
+import org.apache.logging.log4j.LogManager
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
 
 class WebBotConfiguration(vertx: Vertx, createInfo: BotCreateInfo) : BotConfiguration(),CoroutineScope {
     override val coroutineContext: CoroutineContext = EmptyCoroutineContext
+    private val logger = LogManager.getLogger()
     private val logPublisher by lazy { vertx.getServiceProxy<LogPublisher>(Services.LOG) }
     private val configService by lazy { vertx.getServiceProxy<JsonConfigProvider>(Services.CONFIG) }
     init {
         botLoggerSupplier = {
             SimpleLogger("") { message, _ ->
-                println(message)
+                logger.debug(message)
                 launch { logPublisher.publishBotLog(it.id,message?:"") }
             }
         }
         networkLoggerSupplier = {
             SimpleLogger("") { message, _ ->
-                println(message)
+                logger.trace(message)
                 launch { logPublisher.publishNetLog(it.id,message?:"")}
             }
         }

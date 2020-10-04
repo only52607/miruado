@@ -21,6 +21,7 @@ import kotlinx.coroutines.withContext
 import net.mamoe.mirai.Bot
 import net.mamoe.mirai.event.events.BotEvent
 import net.mamoe.mirai.event.subscribeAlways
+import org.apache.logging.log4j.LogManager
 import java.util.*
 
 class MiraiVerticle(channel:String):RpcCoroutineVerticle(channel), MiraiService {
@@ -33,13 +34,14 @@ class MiraiVerticle(channel:String):RpcCoroutineVerticle(channel), MiraiService 
     private val configProvider by provideConfig<Config>(Services.CONFIG)
     private val scriptService by provideService<ScriptService>(Services.SCRIPT)
     private val botEventPublisher by provideService<BotEventPublisher>(Services.BOT_EVENT)
-
     private val captchaResults = mutableMapOf<Long, CompletableDeferred<String>>()
+    private val logger = LogManager.getLogger()
 
     override suspend fun getAllBotsInfo(): JsonArray =
         JsonArray().apply {
             Bot.botInstances.forEach {
-                add(JsonObject(MiraiObjectMapper.instance.writeValueAsString(it)))
+                val s = MiraiObjectMapper.instance.writeValueAsString(it)
+                add(JsonObject(s))
             }
         }
 
@@ -50,6 +52,7 @@ class MiraiVerticle(channel:String):RpcCoroutineVerticle(channel), MiraiService 
         val createInfo = ObjectMapper().readValue(createInfoJson.encode(), BotCreateInfo::class.java)
         val bot = Bot(createInfo.id, createInfo.password, WebBotConfiguration(vertx,createInfo))
         var exception: Exception? = null
+        logger.info("Bot ${createInfo.id} is creating...")
         withContext(Dispatchers.IO) {
             try {
                 bot.login()
@@ -60,6 +63,7 @@ class MiraiVerticle(channel:String):RpcCoroutineVerticle(channel), MiraiService 
                 exception = e
             }
         }
+        logger.info("Bot ${createInfo.id} created!")
         exception?.let {
             throw ServerErrorResponseException("创建失败！${it.message}")
         }

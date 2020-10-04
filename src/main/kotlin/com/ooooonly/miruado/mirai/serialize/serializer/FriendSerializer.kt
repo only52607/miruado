@@ -8,9 +8,11 @@ import net.mamoe.mirai.contact.nameCardOrNick
 
 class FriendSerializer: JsonSerializer<Friend>() {
     override fun serialize(value: Friend?, gen: JsonGenerator?, serializers: SerializerProvider?) {
+        gen?.writeStartObject()
         gen?.writeNumberField("id",value?.id?:0)
         gen?.writeStringField("nick",value?.nick)
         gen?.writeStringField("avatarUrl",value?.avatarUrl)
         gen?.writeStringField("nameCardOrNick",value?.nameCardOrNick?:"")
+        gen?.writeEndObject()
     }
 }
