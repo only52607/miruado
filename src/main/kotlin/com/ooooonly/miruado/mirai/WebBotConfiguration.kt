@@ -19,6 +19,13 @@ class WebBotConfiguration(vertx: Vertx, createInfo: BotCreateInfo) : BotConfigur
     private val logger = LogManager.getLogger()
     private val logPublisher by lazy { vertx.getServiceProxy<LogPublisher>(Services.LOG) }
     private val configService by lazy { vertx.getServiceProxy<JsonConfigProvider>(Services.CONFIG) }
+    private val String.protocolValue
+        get() = when(this){
+            "ANDROID_PHONE" -> MiraiProtocol.ANDROID_PHONE
+            "ANDROID_PAD" -> MiraiProtocol.ANDROID_PAD
+            "ANDROID_WATCH" -> MiraiProtocol.ANDROID_WATCH
+            else -> MiraiProtocol.ANDROID_PAD
+        }
     init {
         botLoggerSupplier = {
             SimpleLogger("") { message, _ ->
@@ -28,11 +35,12 @@ class WebBotConfiguration(vertx: Vertx, createInfo: BotCreateInfo) : BotConfigur
         }
         networkLoggerSupplier = {
             SimpleLogger("") { message, _ ->
-                logger.trace(message)
+                logger.debug(message)
                 launch { logPublisher.publishNetLog(it.id,message?:"")}
             }
         }
         loginSolver = WebBotLoginSolver(vertx)
+        protocol = createInfo.protocol.protocolValue
         launch { fileBasedDeviceInfo(configService.getAbsoluteConfigDictionary() + createInfo.device) }
     }
 }

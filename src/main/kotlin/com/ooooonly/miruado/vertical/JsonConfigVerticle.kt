@@ -35,7 +35,7 @@ class ConfigProvider<T : Any>(
 
 class JsonConfigVertical(channel:String):RpcCoroutineVerticle(channel), JsonConfigProvider {
     companion object{
-        const val DICTIONARY_ROOT = "/config"
+        const val DICTIONARY_ROOT = "config"
         const val CONFIG_PATH = "$DICTIONARY_ROOT/config.json"
     }
 

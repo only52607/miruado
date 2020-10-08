@@ -9,8 +9,8 @@ class BotSerializer: JsonSerializer<Bot>() {
     override fun serialize(value: Bot?, gen: JsonGenerator?, serializers: SerializerProvider?) {
         gen?.writeStartObject()
         gen?.writeNumberField("id",value?.id?:0)
-        gen?.writeStringField("nick",value?.nick)
-        gen?.writeStringField("avatarUrl",value?.selfQQ?.avatarUrl)
+        try { gen?.writeStringField("nick",value?.nick) } catch (e:Exception) {gen?.writeStringField("nick","")}
+        try { gen?.writeStringField("avatarUrl",value?.selfQQ?.avatarUrl) } catch (e:Exception) {gen?.writeStringField("avatarUrl","")}
         gen?.writeBooleanField("isOnline",value?.isOnline?:false)
         gen?.writeEndObject()
     }

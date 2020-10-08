@@ -18,7 +18,7 @@ open class ResponseException(var code:Int = 500, var failMessage:String): Except
             }?: run {
                 logger.error("Unknown exception:")
                 logger.error(context.failure())
-//                context.failure().printStackTrace()
+                context.failure().printStackTrace()
                 if (!context.response().ended()) context.response().setStatusCode(500).end(context.failure().message ?: "")
             }
         }
@@ -27,15 +27,21 @@ open class ResponseException(var code:Int = 500, var failMessage:String): Except
         get() = "{\"code\":$code,\"message\":\"$failMessage\"}"
 }
 @Suppress("unused")
-fun Throwable.checkResponseException():ResponseException? = try{
-    JsonObject(message).run {
-        if(!this.containsKey("code") || !this.containsKey("message")) return@run null
-        ResponseException(getInteger("code"),getString("message"))
+fun Throwable.checkResponseException():ResponseException? {
+    if (this is ResponseException) return this
+    return try{
+        JsonObject(message).run {
+            if(!this.containsKey("code") || !this.containsKey("message")) return@run null
+            ResponseException(getInteger("code"),getString("message"))
+        }
+    }catch (e:Exception){
+        null
     }
-
-}catch (e:Exception){
-    null
 }
+
+
+
+
 
 @Suppress("unused") class InvalidResponseException(failMessage:String = "资源无效！"):ResponseException(400,failMessage)
 @Suppress("unused") class UnauthorizedResponseException(failMessage:String = "身份验证失败！"):ResponseException(401,failMessage)

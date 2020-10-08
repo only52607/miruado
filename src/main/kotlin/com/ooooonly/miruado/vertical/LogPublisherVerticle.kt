@@ -19,9 +19,9 @@ class LogPublisherVerticle(channel:String):RpcCoroutineVerticle(channel), LogPub
         eventBus.publish(configProvider.get().publishChannel,logString)
     }
     override suspend fun publishNetLog(fromBotId:Long,message: String) {
-        publishLog(JsonObject().put("type", "bot").put("from", fromBotId).put("message", message).encode())
+        publishLog(JsonObject().put("type", "net").put("from", fromBotId).put("message", message).encode())
     }
     override suspend fun publishBotLog(fromBotId:Long,message: String) {
-        publishLog(JsonObject().put("type", "net").put("from", fromBotId).put("message", message).encode())
+        publishLog(JsonObject().put("type", "bot").put("from", fromBotId).put("message", message).encode())
     }
 }

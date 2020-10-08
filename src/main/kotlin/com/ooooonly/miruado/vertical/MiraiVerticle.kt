@@ -17,6 +17,7 @@ import io.vertx.core.json.JsonArray
 import io.vertx.core.json.JsonObject
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import net.mamoe.mirai.Bot
 import net.mamoe.mirai.event.events.BotEvent
@@ -39,7 +40,7 @@ class MiraiVerticle(channel:String):RpcCoroutineVerticle(channel), MiraiService 
 
     override suspend fun getAllBotsInfo(): JsonArray =
         JsonArray().apply {
-            Bot.botInstances.forEach {
+            Bot.botInstances.filter { it.isOnline }.forEach {
                 val s = MiraiObjectMapper.instance.writeValueAsString(it)
                 add(JsonObject(s))
             }
@@ -51,22 +52,24 @@ class MiraiVerticle(channel:String):RpcCoroutineVerticle(channel), MiraiService 
     override suspend fun createBot(createInfoJson: JsonObject) {
         val createInfo = ObjectMapper().readValue(createInfoJson.encode(), BotCreateInfo::class.java)
         val bot = Bot(createInfo.id, createInfo.password, WebBotConfiguration(vertx,createInfo))
-        var exception: Exception? = null
         logger.info("Bot ${createInfo.id} is creating...")
         withContext(Dispatchers.IO) {
             try {
                 bot.login()
-                bot.subscribeAlways<BotEvent> { botEventPublisher.publishEventJson(JsonObject(EventMapper.instance.writeValueAsString(it))) }
+                bot.launch {
+                    bot.subscribeAlways<BotEvent> {
+                        bot.launch {
+                            botEventPublisher.publishEventJson(JsonObject(EventMapper.instance.writeValueAsString(it)))
+                        }
+                    }
+                }
                 scriptService.addBot(bot.id)
             } catch (e: Exception) {
-                e.printStackTrace()
-                exception = e
+                logger.error("Error when creating bot",e)
+                throw ServerErrorResponseException("创建失败：${e.message}")
             }
         }
         logger.info("Bot ${createInfo.id} created!")
-        exception?.let {
-            throw ServerErrorResponseException("创建失败！${it.message}")
-        }
     }
 
     override suspend fun deleteBot(botId: Long) = Bot.getInstanceOrNull(botId)?.close()?:throw NotFoundResponseException()
@@ -75,25 +78,22 @@ class MiraiVerticle(channel:String):RpcCoroutineVerticle(channel), MiraiService 
         TODO("Not yet implemented")
     }
 
-    override suspend fun getFriendInfo(botId: Long, friendId: Long): JsonObject {
-        TODO("Not yet implemented")
-    }
+    override suspend fun getFriendInfo(botId: Long, friendId: Long): JsonObject =
+        JsonObject(MiraiObjectMapper.instance.writeValueAsString(Bot.getInstanceOrNull(botId)?.getFriend(friendId)?:throw NotFoundResponseException()))
 
     override suspend fun sendFriendMessage(botId: Long, friendId: Long, message: JsonObject) {
         TODO("Not yet implemented")
     }
 
-    override suspend fun getGroupInfo(botId: Long, groupId: Long): JsonObject {
-        TODO("Not yet implemented")
-    }
+    override suspend fun getGroupInfo(botId: Long, groupId: Long): JsonObject =
+        JsonObject(MiraiObjectMapper.instance.writeValueAsString(Bot.getInstanceOrNull(botId)?.getGroup(groupId)?:throw NotFoundResponseException()))
 
     override suspend fun sendGroupMessage(botId: Long, groupId: Long, message: JsonObject) {
         TODO("Not yet implemented")
     }
 
-    override suspend fun getMemberInfo(botId: Long, groupId: Long, memberId: Long): JsonObject {
-        TODO("Not yet implemented")
-    }
+    override suspend fun getMemberInfo(botId: Long, groupId: Long, memberId: Long): JsonObject =
+        JsonObject(MiraiObjectMapper.instance.writeValueAsString(Bot.getInstanceOrNull(botId)?.getGroup(groupId)?.getOrNull(memberId)?:throw NotFoundResponseException()))
 
     override suspend fun sendMemberMessage(botId: Long, groupId: Long, memberId: Long, message: JsonObject) {
         TODO("Not yet implemented")
